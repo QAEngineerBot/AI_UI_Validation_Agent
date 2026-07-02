@@ -1,20 +1,13 @@
-import { ScreenValidationResult } from '../../core/types/validation.types';
-
-import { ReportStyles } from './report.styles';
-import { ReportDashboard } from './report.dashboard';
+import { ReportStyles } from "./report.styles";
+import { ReportDashboard } from "./report.dashboard";
+import { ReportScreenValidationResult } from "./report.types";
 
 export class ReportTemplate {
+  private readonly styles = new ReportStyles();
 
-  private readonly styles =
-    new ReportStyles();
+  private readonly dashboard = new ReportDashboard();
 
-  private readonly dashboard =
-    new ReportDashboard();
-
-  build(
-    results: ScreenValidationResult[]
-  ): string {
-
+  build(results: ReportScreenValidationResult[]): string {
     return `
 
 <!DOCTYPE html>
@@ -37,7 +30,9 @@ ${this.styles.render()}
 
 ${this.dashboard.render(results)}
 
-${results.map(result => `
+${results
+  .map(
+    (result) => `
 
 <div class="screen">
 
@@ -47,9 +42,7 @@ ${results.map(result => `
 
 Status :
 
-<b class="${result.status === 'PASS'
-? 'pass'
-: 'fail'}">
+<b class="${result.status === "PASS" ? "pass" : "fail"}">
 
 ${result.status}
 
@@ -68,7 +61,7 @@ ${result.status}
 <div class="phone-notch"></div>
 
 <img
-src="file:///${result.expectedImagePath.replace(/\\/g,'/')}"
+src="${result.expectedImageBase64}"
 alt="Expected"
 />
 
@@ -85,7 +78,7 @@ alt="Expected"
 <div class="phone-notch"></div>
 
 <img
-src="file:///${result.actualImagePath.replace(/\\/g,'/')}"
+src="${result.actualImageBase64}"
 alt="Actual"
 />
 
@@ -106,9 +99,9 @@ alt="Actual"
 <h3 style="margin-top:25px;">Detected Issues</h3>
 
 ${
-result.failedIssues.length === 0
-? `<p>No UI issues detected.</p>`
-: `
+  result.failedIssues.length === 0
+    ? `<p>No UI issues detected.</p>`
+    : `
 <table
 style="
 width:100%;
@@ -138,7 +131,9 @@ color:white;
 
 <tbody>
 
-${result.failedIssues.map(issue=>`
+${result.failedIssues
+  .map(
+    (issue) => `
 
 <tr>
 
@@ -184,7 +179,9 @@ ${issue.recommendation}
 
 </tr>
 
-`).join('')}
+`,
+  )
+  .join("")}
 
 </tbody>
 
@@ -194,7 +191,9 @@ ${issue.recommendation}
 
 </div>
 
-`).join('')}
+`,
+  )
+  .join("")}
 
 </div>
 
@@ -203,7 +202,5 @@ ${issue.recommendation}
 </html>
 
 `;
-
   }
-
 }

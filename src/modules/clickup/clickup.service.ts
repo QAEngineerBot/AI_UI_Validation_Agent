@@ -1,9 +1,9 @@
-import { logger } from '../../core/logger/logger';
-import { ScreenValidationResult } from '../../core/types/validation.types';
+import { logger } from "../../core/logger/logger";
+import { ScreenValidationResult } from "../../core/types/validation.types";
 
-import { ClickUpClient } from './clickup.client';
-import { ClickUpMapper } from './clickup.mapper';
-import { CommentBuilder } from './comment.builder';
+import { ClickUpClient } from "./clickup.client";
+import { ClickUpMapper } from "./clickup.mapper";
+import { CommentBuilder } from "./comment.builder";
 
 export class ClickUpService {
   private readonly client: ClickUpClient;
@@ -17,67 +17,44 @@ export class ClickUpService {
   }
 
   async createOrUpdateBug(
-    validation: ScreenValidationResult
+    validation: ScreenValidationResult,
+    reportPath: string,
   ): Promise<void> {
+    const taskName = `${validation.screenName} Screen UI Issues`;
 
-    const taskName =
-      `${validation.screenName} Screen UI Issues`;
+    logger.info(`Searching ClickUp task "${taskName}"`);
 
-    logger.info(
-      `Searching ClickUp task "${taskName}"`
-    );
+    const existingTask = await this.client.findTaskByName(taskName);
 
-    const existingTask =
-      await this.client.findTaskByName(taskName);
-
-    const comment =
-      this.commentBuilder.build(validation);
+    const comment = this.commentBuilder.build(validation);
 
     if (existingTask) {
+      logger.info(`Existing ClickUp task found. Adding execution comment.`);
 
-      logger.info(
-        `Existing ClickUp task found. Adding execution comment.`
-      );
+      await this.client.addComment(existingTask.id, comment);
+      await this.client.uploadAttachment(existingTask.id, reportPath);
 
-      await this.client.addComment(
-        existingTask.id,
-        comment
-      );
-
-      logger.info(
-        `Comment added successfully.`
-      );
+      logger.info(`Comment and attachment added successfully.`);
 
       return;
     }
 
-    logger.info(
-      `No existing task found. Creating new bug.`
-    );
+    logger.info(`No existing task found. Creating new bug.`);
 
-    const request =
-      this.mapper.map({
-        validation,
-      });
+    const request = this.mapper.map({
+      validation,
+    });
 
-    const task =
-      await this.client.createTask(request);
+    const task = await this.client.createTask(request);
 
-    logger.info(
-      `Task created successfully.`
-    );
+    logger.info(`Task created successfully.`);
 
-    await this.client.addComment(
-      task.id,
-      comment
-    );
+    await this.client.addComment(task.id, comment);
 
-    logger.info(
-      `Initial execution comment added.`
-    );
+    await this.client.uploadAttachment(task.id, reportPath);
 
-    logger.info(
-      `Task URL : ${task.url}`
-    );
+    logger.info(`Initial execution comment and attachment added.`);
+
+    logger.info(`Task URL : ${task.url}`);
   }
 }

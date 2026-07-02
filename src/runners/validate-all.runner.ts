@@ -66,7 +66,6 @@ async function run(): Promise<void> {
 
         logger.warn(`FAIL : ${pair.screenName}`);
 
-        await clickup.createOrUpdateBug(result);
       }
     } catch (error) {
       errorCount++;
@@ -85,6 +84,20 @@ async function run(): Promise<void> {
 });
 
 logger.info(`HTML Report: ${report.reportPath}`);
+
+
+for (const result of results) {
+
+  if (result.status === 'FAIL') {
+
+    await clickup.createOrUpdateBug(
+      result,
+      report.reportPath
+    );
+
+  }
+
+}
 
   // ------------------------------------------------------------------
   // Next Phase

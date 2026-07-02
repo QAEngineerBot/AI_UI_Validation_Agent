@@ -7,3 +7,11 @@ export interface ReportGenerationRequest {
 export interface ReportGenerationResult {
   reportPath: string;
 }
+
+export interface ReportScreenValidationResult
+  extends ScreenValidationResult {
+
+  expectedImageBase64: string;
+
+  actualImageBase64: string;
+}
