@@ -1,0 +1,39 @@
+{
+  "name": "ai-ui-validation-agent",
+  "version": "1.0.0",
+  "description": "AI-powered mobile UI validation agent using TypeScript, Appium, Figma and Gemini",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "rimraf dist && tsc",
+    "start": "ts-node src/index.ts",
+    "figma:download": "ts-node src/runners/figma-download.runner.ts",
+    "gemini:test": "ts-node src/runners/gemini-test.runner.ts",
+    "manual:compare": "ts-node src/runners/manual-validation.runner.ts",
+    "clickup:comment": "ts-node src/runners/clickup-comment.runner.ts",
+    "validate:all": "ts-node src/runners/validate-all.runner.ts"
+  },
+  "keywords": [
+    "typescript",
+    "figma",
+    "gemini",
+    "ui-validation",
+    "automation"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@google/genai": "^2.9.0",
+    "axios": "^1.18.1",
+    "dotenv": "^16.6.1",
+    "fs-extra": "^11.3.2",
+    "webdriverio": "^9.29.0",
+    "winston": "^3.18.3"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
+    "@types/node": "^24.13.2",
+    "rimraf": "^6.0.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
+  }
+}
