@@ -1,233 +1,151 @@
 import fs from 'fs-extra';
 import path from 'path';
-import { figmaConfig } from '../../config/figma.config';
-import { FigmaError } from '../../core/errors/figma.error';
 import { logger } from '../../core/logger/logger';
-import { FigmaClient } from './figma.client';
-import { FigmaMapper } from './figma.mapper';
 
 export interface FigmaDownloadResult {
   screenName: string;
   nodeId: string;
   localPath: string;
-  source: 'cache' | 'figma';
+  source: 'local' | 'cache';
 }
 
 export interface DownloadFrameOptions {
   /**
-   * Force bypassing local cache and fetch a fresh frame from Figma.
+   * Kept for compatibility, but this service only resolves local/cache images.
    */
   forceRefresh?: boolean;
 }
 
 export class FigmaService {
-  private readonly figmaClient: FigmaClient;
-  private readonly figmaMapper: FigmaMapper;
   private readonly expectedDir: string;
+  private readonly localExpectedDir: string;
+  private readonly supportedImageExtensions = ['.png', '.jpg', '.jpeg', '.webp'];
 
   constructor() {
-    this.figmaClient = new FigmaClient();
-    this.figmaMapper = new FigmaMapper();
     this.expectedDir = path.join(process.cwd(), 'artifacts', 'expected');
+    this.localExpectedDir = path.join(process.cwd(), 'input', 'expected');
   }
 
   /**
-   * Resolve screen name -> node ID -> download frame (with cache support).
+   * Resolve an expected image from the local input folder or the cache.
    */
   async downloadFrameByScreenName(
     screenName: string,
     options?: DownloadFrameOptions
   ): Promise<FigmaDownloadResult> {
-    const nodeId = await this.figmaMapper.getNodeIdForScreen(screenName);
-    return this.downloadFrameByNodeId(screenName, nodeId, options);
-  }
-
-  /**
-   * Download a frame directly using node ID, with cache support.
-   */
-  async downloadFrameByNodeId(
-  screenName: string,
-  nodeId: string,
-  options?: DownloadFrameOptions
-): Promise<FigmaDownloadResult> {
-  const fileKey = figmaConfig.fileKey;
-
-  if (!fileKey) {
-    throw new FigmaError(
-      'FIGMA_FILE_KEY is missing. Please add it to your .env file.',
-      'FIGMA_FILE_KEY_MISSING'
+    logger.info(
+      `Resolving expected image for screen="${screenName}" (forceRefresh=${options?.forceRefresh ?? false})`
     );
-  }
 
-  const forceRefresh = options?.forceRefresh ?? false;
+    const localExpectedPath = await this.findLocalExpectedImage(screenName);
 
-  logger.info(
-    `Starting Figma frame download for screen="${screenName}", nodeId=${nodeId}, forceRefresh=${forceRefresh}`
-  );
+    if (localExpectedPath) {
+      logger.info(`Using expected design from input/expected: ${localExpectedPath}`);
 
-  // ---------- CACHE ----------
-  if (!forceRefresh) {
+      return {
+        screenName,
+        nodeId: '',
+        localPath: localExpectedPath,
+        source: 'local',
+      };
+    }
+
     const cachedPath = await this.findCachedFrame(screenName);
 
     if (cachedPath) {
+      logger.info(`Using cached expected design: ${cachedPath}`);
+
       return {
         screenName,
-        nodeId,
+        nodeId: '',
         localPath: cachedPath,
         source: 'cache',
       };
     }
+
+    throw new Error(
+      `No expected image found for screen="${screenName}" in input/expected or artifacts/expected`
+    );
   }
 
-  logger.info(
-    `No cached expected design found. Downloading latest frame from Figma...`
-  );
-
-  // ---------- VALIDATE ----------
-  await this.validateNode(fileKey, nodeId);
-
-  // ---------- IMAGE URL ----------
-  const imageUrl = await this.figmaClient.getRenderedImageUrl(
-    fileKey,
-    nodeId,
-    'png',
-    1
-  );
-
-  logger.info(
-    `Received Figma image URL for screen="${screenName}"`
-  );
-
-  // ---------- DOWNLOAD ----------
-  const imageBuffer = await this.figmaClient.downloadImage(imageUrl);
-
-  const localPath = this.buildExpectedImagePath(screenName);
-
-  await fs.ensureDir(path.dirname(localPath));
-
-  await fs.writeFile(localPath, imageBuffer);
-
-  logger.info(
-    `Saved expected design for screen="${screenName}" at ${localPath}`
-  );
-
-  return {
-    screenName,
-    nodeId,
-    localPath,
-    source: 'figma',
-  };
-}
-
-  /**
-   * Validate that the configured node exists and returns metadata from Figma.
-   */
-  private async validateNode(fileKey: string, nodeId: string): Promise<void> {
-    logger.info(`Validating Figma node. fileKey=${fileKey}, nodeId=${nodeId}`);
-
-    const nodeResponse = await this.figmaClient.getNodes(fileKey, [nodeId]);
-
+  async downloadFrameByNodeId(
+    screenName: string,
+    nodeId: string,
+    options?: DownloadFrameOptions
+  ): Promise<FigmaDownloadResult> {
     logger.info(
-      `Figma node response received for nodeId=${nodeId}. Returned node keys: ${Object.keys(
-        nodeResponse.nodes ?? {}
-      ).join(',')}`
+      `Resolving expected image for screen="${screenName}" using nodeId=${nodeId}`
     );
 
-    const nodeData = nodeResponse.nodes?.[nodeId];
+    return this.downloadFrameByScreenName(screenName, options);
+  }
 
-    if (!nodeData || !nodeData.document) {
-      logger.error(
-        `Figma node validation failed. fileKey=${fileKey}, nodeId=${nodeId}, rawResponse=${JSON.stringify(
-          nodeResponse
-        )}`
-      );
+  private async findLocalExpectedImage(
+    screenName: string
+  ): Promise<string | null> {
+    const directCandidates = this.supportedImageExtensions.map(ext =>
+      path.join(this.localExpectedDir, `${screenName}${ext}`)
+    );
 
-      throw new FigmaError(
-        `Node validation failed. No node metadata returned for nodeId=${nodeId}`,
-        'FIGMA_NODE_NOT_FOUND',
-        nodeResponse
-      );
+    for (const candidate of directCandidates) {
+      if (await fs.pathExists(candidate)) {
+        return candidate;
+      }
     }
 
-    logger.info(
-      `Validated Figma node successfully. nodeId=${nodeId}, nodeName=${nodeData.document.name}`
+    const screenFolder = path.join(this.localExpectedDir, screenName);
+    const folderExists = await fs.pathExists(screenFolder);
+
+    if (!folderExists) {
+      return null;
+    }
+
+    const files = await fs.readdir(screenFolder);
+    const imageFile = files.find(file =>
+      this.supportedImageExtensions.includes(path.extname(file).toLowerCase())
     );
+
+    if (!imageFile) {
+      return null;
+    }
+
+    return path.join(screenFolder, imageFile);
   }
 
- private async findCachedFrame(
-  screenName: string
-): Promise<string | null> {
+  private async findCachedFrame(
+    screenName: string
+  ): Promise<string | null> {
+    const screenFolder = path.join(this.expectedDir, screenName);
+    const folderExists = await fs.pathExists(screenFolder);
 
-  const screenFolder = path.join(
-    this.expectedDir,
-    screenName
-  );
+    if (!folderExists) {
+      logger.info(`No cache folder found for screen="${screenName}"`);
+      return null;
+    }
 
-  const folderExists = await fs.pathExists(screenFolder);
-
-  if (!folderExists) {
-    logger.info(
-      `No cache folder found for screen="${screenName}"`
+    const files = await fs.readdir(screenFolder);
+    const imageFiles = files.filter(file =>
+      this.supportedImageExtensions.includes(path.extname(file).toLowerCase())
     );
-    return null;
-  }
 
-  const files = await fs.readdir(screenFolder);
+    if (imageFiles.length === 0) {
+      logger.info(`No cached expected image found for screen="${screenName}"`);
+      return null;
+    }
 
-  const pngFiles = files.filter(file =>
-    file.toLowerCase().endsWith(".png")
-  );
+    const fileStats = await Promise.all(
+      imageFiles.map(async file => {
+        const filePath = path.join(screenFolder, file);
+        const stat = await fs.stat(filePath);
 
-  if (pngFiles.length === 0) {
-    logger.info(
-      `No cached PNG found for screen="${screenName}"`
+        return {
+          filePath,
+          modified: stat.mtimeMs,
+        };
+      })
     );
-    return null;
+
+    fileStats.sort((a, b) => b.modified - a.modified);
+    return fileStats[0].filePath;
   }
-
-  // Sort by last modified time (newest first)
-  const fileStats = await Promise.all(
-    pngFiles.map(async file => {
-      const filePath = path.join(screenFolder, file);
-      const stat = await fs.stat(filePath);
-
-      return {
-        filePath,
-        modified: stat.mtimeMs,
-      };
-    })
-  );
-
-  fileStats.sort((a, b) => b.modified - a.modified);
-
-  logger.info(
-    `Using cached expected design: ${fileStats[0].filePath}`
-  );
-
-  return fileStats[0].filePath;
-}
-
-  /**
-   * Build a timestamped expected-image output path.
-   */
-private buildExpectedImagePath(
-  screenName: string
-): string {
-
-  const screenFolder = path.join(
-    this.expectedDir,
-    screenName
-  );
-
-  fs.ensureDirSync(screenFolder);
-
-  const timestamp = new Date()
-    .toISOString()
-    .replace(/[:.]/g, "-");
-
-  return path.join(
-    screenFolder,
-    `${screenName}_${timestamp}.png`
-  );
-}
 }
