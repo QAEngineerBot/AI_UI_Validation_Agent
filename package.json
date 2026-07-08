@@ -6,7 +6,6 @@
   "scripts": {
     "build": "rimraf dist && tsc",
     "start": "ts-node src/index.ts",
-    "figma:download": "ts-node src/runners/figma-download.runner.ts",
     "gemini:test": "ts-node src/runners/gemini-test.runner.ts",
     "manual:compare": "ts-node src/runners/manual-validation.runner.ts",
     "clickup:comment": "ts-node src/runners/clickup-comment.runner.ts",
